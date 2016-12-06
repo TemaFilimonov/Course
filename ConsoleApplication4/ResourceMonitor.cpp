@@ -5,12 +5,49 @@
 #include <string>
 #include <Pdh.h>
 #include <PdhMsg.h>
-//Link pdh.lib
 #include <Windows.h>
 #include "PdhHelperFunctions.h"
 
 using namespace std;
 
+void printStats(double diskUsage, unsigned long long downloadedBytes, unsigned long long uploadedBytes, 
+			  PDH_FMT_COUNTERVALUE cpuUsage, wstring processTitle, double ramUsage) {
+	wprintf(L"%5.2f  %u\t%u\t%5.2f   %s\t%.2f\n",
+		diskUsage,
+		(unsigned int)downloadedBytes,
+		(unsigned int)uploadedBytes,
+		cpuUsage.doubleValue,
+		processTitle.c_str(),
+		ramUsage);
+}
+
+void printColoredStats(double diskUsage, unsigned long long downloadedBytes, unsigned long long uploadedBytes,
+	PDH_FMT_COUNTERVALUE cpuUsage, wstring processTitle, double ramUsage) {
+	if (diskUsage >= 50.0 || cpuUsage.doubleValue >= 50.0 || ramUsage >= 50.0) {
+		HANDLE  hConsole;
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+		int col = 12;
+		FlushConsoleInputBuffer(hConsole);
+		SetConsoleTextAttribute(hConsole, col);
+
+		printStats(diskUsage,
+			downloadedBytes,
+			uploadedBytes,
+			cpuUsage,
+			processTitle.c_str(),
+			ramUsage);
+		SetConsoleTextAttribute(hConsole, 15);
+	}
+	else
+	{
+		printStats(diskUsage,
+			downloadedBytes,
+			uploadedBytes,
+			cpuUsage,
+			processTitle.c_str(),
+			ramUsage);
+	}
+}
 
 double GetPercentUsedRAM() {
 	//Gets the system physical ram usage percent, returned as a double.
@@ -24,20 +61,30 @@ double GetPercentUsedRAM() {
 	return bytes_in_use / ((double)data.ullTotalPhys) * 100;
 }
 
-int main()
-{
-	cout << "Resource Monitor\tDec 2016" << endl;
-	cout << "Disk   Download\tUpload\tCPU    Process\tRAM" << endl;
+double getDiskUsage(PDH_HCOUNTER disk_pct_counters, int sleep_time) {
+	PDH_FMT_COUNTERVALUE_ITEM* disk_pcts = 0;
+	DWORD counter_count = GetCounterArray(disk_pct_counters, PDH_FMT_DOUBLE, &disk_pcts);
+	if (counter_count == 0) {
+		sleep_time = 1;
+	}
+	double diskUsage = 0.0;
+	for (DWORD diskN = 1; diskN < counter_count; ++diskN) {
+		if (disk_pcts[diskN].FmtValue.doubleValue > diskUsage) {
+			diskUsage = disk_pcts[diskN].FmtValue.doubleValue;
+		}
+	}
+	delete[] disk_pcts;
+	return diskUsage;
+}
 
-	//Open query
+void startMegaCycle() {
 	PDH_HQUERY query_handle;
 	PDH_STATUS pdh_status = PdhOpenQuery(NULL, 0, &query_handle);
-	if (pdh_status != ERROR_SUCCESS) {
+	if (pdh_status != ERROR_SUCCESS) { //Error in init
 		cout << "PdhOpenQuery() error." << endl;
-		return 0;
 	}
 
-	PDH_HCOUNTER cpu_pct_counter = AddSingleCounter(query_handle,
+	PDH_HCOUNTER cpuUsage_counter = AddSingleCounter(query_handle,
 		L"\\Processor(_Total)\\% Processor Time");
 	PDH_HCOUNTER disk_pct_counters = AddSingleCounter(query_handle,
 		L"\\PhysicalDisk(*)\\% Disk Time");
@@ -45,7 +92,7 @@ int main()
 		L"\\Network Interface(*)\\Bytes Sent/sec");
 	PDH_HCOUNTER bytes_recv_counters = AddSingleCounter(query_handle,
 		L"\\Network Interface(*)\\Bytes Received/sec");
-	PDH_HCOUNTER process_cpu_pct_counters = AddSingleCounter(query_handle,
+	PDH_HCOUNTER process_cpuUsage_counters = AddSingleCounter(query_handle,
 		L"\\Process(*)\\% Processor Time");
 	PDH_HCOUNTER process_write_bytes_counters = AddSingleCounter(query_handle,
 		L"\\Process(*)\\IO Write Bytes/sec");
@@ -66,49 +113,39 @@ int main()
 		CollectQueryData(query_handle);
 
 		////////// CPU % //////////
-		PDH_FMT_COUNTERVALUE cpu_pct;
-		pdh_status = PdhGetFormattedCounterValue(cpu_pct_counter, PDH_FMT_DOUBLE, 0, &cpu_pct);
-		if ((pdh_status != ERROR_SUCCESS) || (cpu_pct.CStatus != ERROR_SUCCESS)) {
+		PDH_FMT_COUNTERVALUE cpuUsage;
+		pdh_status = PdhGetFormattedCounterValue(cpuUsage_counter, PDH_FMT_DOUBLE, 0, &cpuUsage);
+		if ((pdh_status != ERROR_SUCCESS) || (cpuUsage.CStatus != ERROR_SUCCESS)) {
 			sleep_time = 1;
 			continue;
 		}
-		PDH_FMT_COUNTERVALUE_ITEM* disk_pcts = 0;
-		DWORD counter_count = GetCounterArray(disk_pct_counters, PDH_FMT_DOUBLE, &disk_pcts);
-		if (counter_count == 0) {
-			sleep_time = 1;
-			continue;
-		}
-		double highest_disk_usage = 0.0;
-		for (DWORD diskN = 1; diskN < counter_count; ++diskN) {
-			if (disk_pcts[diskN].FmtValue.doubleValue > highest_disk_usage) {
-				highest_disk_usage = disk_pcts[diskN].FmtValue.doubleValue;
-			}
-		}
-		delete[] disk_pcts;
-		unsigned long long sent_bytes = SumCounterArray(bytes_sent_counters);
-		unsigned long long recv_bytes = SumCounterArray(bytes_recv_counters);
-		double ram_pct = GetPercentUsedRAM();
-		wstring bottleneck_name = L"";
-		if (cpu_pct.doubleValue >= 90.0) {
-			PDH_FMT_COUNTERVALUE_ITEM* process_cpu_pcts = 0;
-			DWORD process_count = GetCounterArray(process_cpu_pct_counters,
+
+		double diskUsage = getDiskUsage(disk_pct_counters, sleep_time);
+		unsigned long long uploadedBytes = SumCounterArray(bytes_sent_counters);
+		unsigned long long downloadedBytes = SumCounterArray(bytes_recv_counters);
+		double ramUsage = GetPercentUsedRAM();
+
+		wstring processTitle = L"";
+		if (cpuUsage.doubleValue >= 90.0) {
+			PDH_FMT_COUNTERVALUE_ITEM* process_cpuUsages = 0;
+			DWORD process_count = GetCounterArray(process_cpuUsage_counters,
 				PDH_FMT_DOUBLE,
-				&process_cpu_pcts);
+				&process_cpuUsages);
 			if (process_count == 0) {
 			}
 			else {
-				double highest_cpu_pct = 0.0;
-				DWORD index_of_highest_cpu_pct = 0;
+				double highest_cpuUsage = 0.0;
+				DWORD index_of_highest_cpuUsage = 0;
 				for (DWORD procN = 1; procN < process_count; ++procN) {
-					if (process_cpu_pcts[procN].FmtValue.doubleValue > highest_cpu_pct) {
-						highest_cpu_pct = process_cpu_pcts[procN].FmtValue.doubleValue;
-						index_of_highest_cpu_pct = procN;
+					if (process_cpuUsages[procN].FmtValue.doubleValue > highest_cpuUsage) {
+						highest_cpuUsage = process_cpuUsages[procN].FmtValue.doubleValue;
+						index_of_highest_cpuUsage = procN;
 					}
 				}
-				if (index_of_highest_cpu_pct != 0) {
-					bottleneck_name.assign(process_cpu_pcts[index_of_highest_cpu_pct].szName);
+				if (index_of_highest_cpuUsage != 0) {
+					processTitle.assign(process_cpuUsages[index_of_highest_cpuUsage].szName);
 				}
-				delete[] process_cpu_pcts;
+				delete[] process_cpuUsages;
 			}
 		}
 		else {
@@ -127,7 +164,7 @@ int main()
 					delete[] process_write_bytes;
 				}
 				else {
-					if (highest_disk_usage >= 50.0) {
+					if (diskUsage >= 50.0) {
 						long long highest_total_io = 0;
 						DWORD index_of_highest = 0;
 						for (DWORD procN = 1; procN < process_count; ++procN) {
@@ -139,10 +176,10 @@ int main()
 						}
 						if (index_of_highest != 0) {
 							//Save the process name for output
-							bottleneck_name.assign(process_write_bytes[index_of_highest].szName);
+							processTitle.assign(process_write_bytes[index_of_highest].szName);
 						}
 					}
-					else if (recv_bytes > sent_bytes) {
+					else if (downloadedBytes > uploadedBytes) {
 						//Find process with highest read IO
 						long long highest_read_io = 0;
 						DWORD index_of_highest = 0;
@@ -154,10 +191,10 @@ int main()
 						}
 						if (index_of_highest != 0) {
 							//Save the process name for output
-							bottleneck_name.assign(process_read_bytes[index_of_highest].szName);
+							processTitle.assign(process_read_bytes[index_of_highest].szName);
 						}
 					}
-					else if (sent_bytes < recv_bytes) {
+					else if (uploadedBytes < downloadedBytes) {
 						//Find process with highest write IO
 						long long highest_write_io = 0;
 						DWORD index_of_highest = 0;
@@ -169,12 +206,12 @@ int main()
 						}
 						if (index_of_highest != 0) {
 							//Save the process name for output
-							bottleneck_name.assign(process_write_bytes[index_of_highest].szName);
+							processTitle.assign(process_write_bytes[index_of_highest].szName);
 						}
 					}
 					else {
 						//Nothing is happening
-						//bottleneck_name.assign(L"nothing");
+						//processTitle.assign(L"nothing");
 					}
 					delete[] process_write_bytes;
 					delete[] process_read_bytes;
@@ -183,17 +220,30 @@ int main()
 		}
 
 		////////// Format Output //////////
-		if (bottleneck_name.length() == 0) {
-			bottleneck_name.assign(L"\t");
+		if (processTitle.length() < 25) {
+			while (processTitle.length() < 25) {
+				processTitle.push_back(' ');
+			}
 		}
-		wprintf(L"%5.2f  %u\t%u\t%5.2f  %s\t%5.2f\n",
-			highest_disk_usage,
-			(unsigned int)recv_bytes,
-			(unsigned int)sent_bytes,
-			cpu_pct.doubleValue,
-			bottleneck_name.c_str(),
-			ram_pct);
+		printColoredStats(diskUsage,
+			downloadedBytes,
+			uploadedBytes,
+			cpuUsage,
+			processTitle.c_str(),
+			ramUsage);
+		
+		
 	}
+}
 
+void initTableHeader() {
+	cout << "Resource Monitor\tDec 2016" << endl;
+	cout << "Disk   Download\tUpload   CPU               Process  \t         RAM" << endl;
+}
+
+int main()
+{
+	initTableHeader();
+	startMegaCycle();
 	return 0;
 }

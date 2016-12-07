@@ -97,7 +97,6 @@ double getDiskUsage(PDH_HCOUNTER disk_pct_counters, int sleep_time) {
 }
 
 void startMegaCycle(boolean continueGettingStats, boolean colored) {
-	if (GetAsyncKeyState(VK_RETURN)) {}
 	PDH_HQUERY query_handle;
 	PDH_STATUS pdh_status = PdhOpenQuery(NULL, 0, &query_handle);
 	if (pdh_status != ERROR_SUCCESS) { //Error in init

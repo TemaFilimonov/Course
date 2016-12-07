@@ -30,9 +30,21 @@ void printColoredStats(double diskUsage, unsigned long long downloadedBytes, uns
 	PDH_FMT_COUNTERVALUE cpuUsage, wstring processTitle, double ramUsage) {
 	HANDLE  hConsole;
 	hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	if (diskUsage >= 50.0 || cpuUsage.doubleValue >= 50.0 || ramUsage >= 50.0) {
+	if (diskUsage >= 75.0 || cpuUsage.doubleValue >= 75.0 || ramUsage >= 75.0) {
 		FlushConsoleInputBuffer(hConsole);
 		SetConsoleTextAttribute(hConsole, 12);
+
+		printStats(diskUsage,
+			downloadedBytes,
+			uploadedBytes,
+			cpuUsage,
+			processTitle.c_str(),
+			ramUsage);
+		SetConsoleTextAttribute(hConsole, 15);
+	}
+	else if (diskUsage >= 50.0 || cpuUsage.doubleValue >= 50.0 || ramUsage >= 50.0) {
+		FlushConsoleInputBuffer(hConsole);
+		SetConsoleTextAttribute(hConsole, 14);
 
 		printStats(diskUsage,
 			downloadedBytes,
@@ -85,6 +97,7 @@ double getDiskUsage(PDH_HCOUNTER disk_pct_counters, int sleep_time) {
 }
 
 void startMegaCycle(boolean continueGettingStats, boolean colored) {
+	if (GetAsyncKeyState(VK_RETURN)) {}
 	PDH_HQUERY query_handle;
 	PDH_STATUS pdh_status = PdhOpenQuery(NULL, 0, &query_handle);
 	if (pdh_status != ERROR_SUCCESS) { //Error in init
@@ -274,7 +287,7 @@ void listenKeyboardEvents(boolean continueGettingStats) {
 }*/
 
 void clearConsole() {
-	cout << "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n" << endl;
+	system("cls");
 }
 
 void initWorking() {

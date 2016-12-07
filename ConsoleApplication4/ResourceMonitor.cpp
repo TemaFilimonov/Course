@@ -7,6 +7,11 @@
 #include <PdhMsg.h>
 #include <Windows.h>
 #include "PdhHelperFunctions.h"
+#include <conio.h>
+
+#include <future>
+#include <thread>
+
 
 using namespace std;
 
@@ -23,12 +28,11 @@ void printStats(double diskUsage, unsigned long long downloadedBytes, unsigned l
 
 void printColoredStats(double diskUsage, unsigned long long downloadedBytes, unsigned long long uploadedBytes,
 	PDH_FMT_COUNTERVALUE cpuUsage, wstring processTitle, double ramUsage) {
+	HANDLE  hConsole;
+	hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
 	if (diskUsage >= 50.0 || cpuUsage.doubleValue >= 50.0 || ramUsage >= 50.0) {
-		HANDLE  hConsole;
-		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-		int col = 12;
 		FlushConsoleInputBuffer(hConsole);
-		SetConsoleTextAttribute(hConsole, col);
+		SetConsoleTextAttribute(hConsole, 12);
 
 		printStats(diskUsage,
 			downloadedBytes,
@@ -40,12 +44,15 @@ void printColoredStats(double diskUsage, unsigned long long downloadedBytes, uns
 	}
 	else
 	{
+		FlushConsoleInputBuffer(hConsole);
+		SetConsoleTextAttribute(hConsole, 10);
 		printStats(diskUsage,
 			downloadedBytes,
 			uploadedBytes,
 			cpuUsage,
 			processTitle.c_str(),
 			ramUsage);
+		SetConsoleTextAttribute(hConsole, 15);
 	}
 }
 
@@ -77,7 +84,7 @@ double getDiskUsage(PDH_HCOUNTER disk_pct_counters, int sleep_time) {
 	return diskUsage;
 }
 
-void startMegaCycle() {
+void startMegaCycle(boolean continueGettingStats, boolean colored) {
 	PDH_HQUERY query_handle;
 	PDH_STATUS pdh_status = PdhOpenQuery(NULL, 0, &query_handle);
 	if (pdh_status != ERROR_SUCCESS) { //Error in init
@@ -105,7 +112,11 @@ void startMegaCycle() {
 	}
 
 	int sleep_time = 1000;
-	while (true) {
+	while (continueGettingStats) {
+		
+		if (GetAsyncKeyState(VK_RETURN)) {
+			continueGettingStats = false;
+		}
 		Sleep(sleep_time);
 		if (sleep_time != 1000) {
 			sleep_time = 1000;
@@ -225,14 +236,25 @@ void startMegaCycle() {
 				processTitle.push_back(' ');
 			}
 		}
-		printColoredStats(diskUsage,
-			downloadedBytes,
-			uploadedBytes,
-			cpuUsage,
-			processTitle.c_str(),
-			ramUsage);
 		
-		
+		if (colored) {
+			printColoredStats(diskUsage,
+				downloadedBytes,
+				uploadedBytes,
+				cpuUsage,
+				processTitle.c_str(),
+				ramUsage);
+		}
+		else
+		{
+			printStats(diskUsage,
+				downloadedBytes,
+				uploadedBytes,
+				cpuUsage,
+				processTitle.c_str(),
+				ramUsage);
+		}
+				
 	}
 }
 
@@ -241,9 +263,65 @@ void initTableHeader() {
 	cout << "Disk   Download\tUpload   CPU               Process  \t         RAM" << endl;
 }
 
+/* 
+void listenKeyboardEvents(boolean continueGettingStats) {
+	if (GetAsyncKeyState(VK_RETURN)) {
+		continueGettingStats = false;
+	}
+	if (continueGettingStats) { 
+		listenKeyboardEvents(continueGettingStats);
+	}
+}*/
+
+void clearConsole() {
+	cout << "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n" << endl;
+}
+
+void initWorking() {
+	string str;
+	cout << "To start monitoring enter \"start\"" << endl;
+	cout << "To show modificators enter \"help\"" << endl;
+	cout << "To exit from application enter \"exit\"" << endl;
+	cin >> str;
+	if (str.find("start") != string::npos) {
+		boolean colored = false;
+		if (str.find("-c") != string::npos) {
+			colored = true;
+		}
+		GetAsyncKeyState(VK_RETURN);
+		initTableHeader();
+		boolean continueGettingStats = true;																														boolean continueGetingStats = true;
+		thread loopTread(startMegaCycle, continueGettingStats, colored);
+		loopTread.join();
+		clearConsole();
+		initWorking();
+	}
+	else if (str == "help") {
+		cout << "\n\n\n Concat modifikators with command like as \" start-c\"." << endl;
+		cout << "List of modificators:" << endl;
+		cout << "-c -- print colored statistic\n\n\n" << endl;
+		initWorking();
+	}
+	else if (str == "exit") {}
+	else
+	{
+		cout << "Cant find this command" << endl;
+		initWorking();
+	}
+}
+
+void startWorking(boolean colored) {
+	boolean continueGettingStats = true;																														boolean continueGetingStats = true;
+	thread loopTread(startMegaCycle, continueGettingStats, colored);
+	//thread keyListenTread(listenKeyboardEvents, continueGetingStats);
+	//keyListenTread.join();
+	loopTread.join();	
+	clearConsole();
+	initWorking();
+}
+
 int main()
 {
-	initTableHeader();
-	startMegaCycle();
+	initWorking();
 	return 0;
 }

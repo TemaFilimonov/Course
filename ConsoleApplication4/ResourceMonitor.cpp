@@ -68,6 +68,23 @@ void printColoredStats(double diskUsage, unsigned long long downloadedBytes, uns
 	}
 }
 
+void printWarningStats(double diskUsage, unsigned long long downloadedBytes, unsigned long long uploadedBytes,
+	PDH_FMT_COUNTERVALUE cpuUsage, wstring processTitle, double ramUsage) {
+	HANDLE  hConsole;
+	hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	if (diskUsage >= 75.0 || cpuUsage.doubleValue >= 75.0 || ramUsage >= 75.0) {
+		FlushConsoleInputBuffer(hConsole);
+		SetConsoleTextAttribute(hConsole, 12);
+
+		printStats(diskUsage,
+			downloadedBytes,
+			uploadedBytes,
+			cpuUsage,
+			processTitle.c_str(),
+			ramUsage);
+		SetConsoleTextAttribute(hConsole, 15);
+	}
+}
 double GetPercentUsedRAM() {
 	//Gets the system physical ram usage percent, returned as a double.
 	MEMORYSTATUSEX data;
@@ -96,7 +113,7 @@ double getDiskUsage(PDH_HCOUNTER disk_pct_counters, int sleep_time) {
 	return diskUsage;
 }
 
-void startMegaCycle(boolean continueGettingStats, boolean colored) {
+void startMegaCycle(boolean continueGettingStats, boolean colored, boolean onlyWarning) {
 	PDH_HQUERY query_handle;
 	PDH_STATUS pdh_status = PdhOpenQuery(NULL, 0, &query_handle);
 	if (pdh_status != ERROR_SUCCESS) { //Error in init
@@ -124,6 +141,7 @@ void startMegaCycle(boolean continueGettingStats, boolean colored) {
 	}
 
 	int sleep_time = 1000;
+	continueGettingStats = true;
 	while (continueGettingStats) {
 		
 		if (GetAsyncKeyState(VK_RETURN)) {
@@ -249,7 +267,16 @@ void startMegaCycle(boolean continueGettingStats, boolean colored) {
 			}
 		}
 		
-		if (colored) {
+		if (onlyWarning) {
+			printWarningStats(diskUsage,
+				downloadedBytes,
+				uploadedBytes,
+				cpuUsage,
+				processTitle.c_str(),
+				ramUsage);
+		}
+		else  if (colored)
+		{
 			printColoredStats(diskUsage,
 				downloadedBytes,
 				uploadedBytes,
@@ -297,34 +324,39 @@ void initWorking() {
 	cin >> str;
 	if (str.find("start") != string::npos) {
 		boolean colored = false;
+		boolean onlyWarning = false;
 		if (str.find("-c") != string::npos) {
 			colored = true;
+		}
+		if (str.find("-ow") != string::npos) {
+			onlyWarning = true;
 		}
 		GetAsyncKeyState(VK_RETURN);
 		initTableHeader();
 		boolean continueGettingStats = true;																														boolean continueGetingStats = true;
-		thread loopTread(startMegaCycle, continueGettingStats, colored);
+		thread loopTread(startMegaCycle, continueGettingStats, colored, onlyWarning);
 		loopTread.join();
 		clearConsole();
 		initWorking();
 	}
 	else if (str == "help") {
-		cout << "\n\n\n Concat modifikators with command like as \" start-c\"." << endl;
-		cout << "List of modificators:" << endl;
+		cout << "\n\n\nConcat modifikators with command like as \" start-c\".\n" << endl;
+		cout << "List of modificators:" << endl; 
+		cout << "-ow -- print only warning process" << endl;
 		cout << "-c -- print colored statistic\n\n\n" << endl;
 		initWorking();
 	}
 	else if (str == "exit") {}
 	else
 	{
-		cout << "Cant find this command" << endl;
+		cout << "\n\nCant find this command\n\n" << endl;
 		initWorking();
 	}
 }
 
-void startWorking(boolean colored) {
+void startWorking(boolean colored, boolean onlyWarning) {
 	boolean continueGettingStats = true;																														boolean continueGetingStats = true;
-	thread loopTread(startMegaCycle, continueGettingStats, colored);
+	thread loopTread(startMegaCycle, continueGettingStats, colored, onlyWarning);
 	//thread keyListenTread(listenKeyboardEvents, continueGetingStats);
 	//keyListenTread.join();
 	loopTread.join();	

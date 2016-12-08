@@ -246,13 +246,8 @@ void startMegaCycle(boolean continueGettingStats, boolean colored, boolean onlyW
 							}
 						}
 						if (index_of_highest != 0) {
-							//Save the process name for output
 							processTitle.assign(process_write_bytes[index_of_highest].szName);
 						}
-					}
-					else {
-						//Nothing is happening
-						//processTitle.assign(L"nothing");
 					}
 					delete[] process_write_bytes;
 					delete[] process_read_bytes;
@@ -260,7 +255,6 @@ void startMegaCycle(boolean continueGettingStats, boolean colored, boolean onlyW
 			}
 		}
 
-		////////// Format Output //////////
 		if (processTitle.length() < 25) {
 			while (processTitle.length() < 25) {
 				processTitle.push_back(' ');
@@ -302,7 +296,7 @@ void initTableHeader() {
 	cout << "Disk   Download\tUpload   CPU               Process  \t         RAM" << endl;
 }
 
-/* 
+/*
 void listenKeyboardEvents(boolean continueGettingStats) {
 	if (GetAsyncKeyState(VK_RETURN)) {
 		continueGettingStats = false;
